@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#FF8C00"/>
+  <title>🐕 Dog Tracker</title>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="icon.png"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --orange: #FF8C00;
+      --orange-dark: #CC6600;
+      --orange-light: #FFB347;
+      --brown: #8B4513;
+      --cream: #FFF8F0;
+      --green: #4CAF50;
+      --red: #F44336;
+      --card-bg: rgba(255,255,255,0.95);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, 'Sarabun', sans-serif;
+      background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ===== HEADER ===== */
+    .header {
+      background: linear-gradient(135deg, var(--orange) 0%, var(--orange-dark) 100%);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 20px rgba(255,140,0,0.4);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header h1 { color: white; font-size: 20px; font-weight: 700; }
+    .header-subtitle { color: rgba(255,255,255,0.8); font-size: 12px; margin-top: 2px; }
+    .paw-icon { font-size: 32px; }
+    .status-pill {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.4);
+      color: white;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.3); }
+    }
+
+    /* ===== DOG CARDS ===== */
+    .dogs-scroll {
+      display: flex;
+      gap: 12px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .dogs-scroll::-webkit-scrollbar { display: none; }
+    .dog-card {
+      background: var(--card-bg);
+      border-radius: 20px;
+      padding: 16px;
+      min-width: 140px;
+      text-align: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: all 0.3s;
+      border: 3px solid transparent;
+      position: relative;
+    }
+    .dog-card.active {
+      border-color: var(--orange);
+      box-shadow: 0 4px 20px rgba(255,140,0,0.4);
+      transform: translateY(-3px);
+    }
+    .dog-card.offline .dog-status-badge { background: var(--red); }
+    .dog-avatar {
+      font-size: 42px;
+      margin-bottom: 8px;
+      display: block;
+    }
+    .dog-name {
+      font-weight: 700;
+      color: var(--brown);
+      font-size: 15px;
+    }
+    .dog-breed {
+      color: #999;
+      font-size: 11px;
+      margin-top: 2px;
+    }
+    .dog-status-badge {
+      position: absolute;
+      top: 10px; right: 10px;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: var(--green);
+      border: 2px solid white;
+    }
+    .dog-last-update {
+      font-size: 10px;
+      color: #aaa;
+      margin-top: 6px;
+    }
+    .add-dog-card {
+      background: rgba(255,140,0,0.1);
+      border: 2px dashed var(--orange-light);
+      border-radius: 20px;
+      padding: 16px;
+      min-width: 100px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--orange);
+      font-size: 13px;
+      gap: 8px;
+      transition: all 0.3s;
+    }
+    .add-dog-card:hover { background: rgba(255,140,0,0.2); }
+
+    /* ===== INFO CARDS ===== */
+    .info-strip {
+      display: flex;
+      gap: 12px;
+      padding: 0 20px 16px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .info-strip::-webkit-scrollbar { display: none; }
+    .info-card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 14px 18px;
+      min-width: 130px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .info-card-icon { font-size: 22px; }
+    .info-card-value { font-size: 20px; font-weight: 700; color: var(--brown); }
+    .info-card-label { font-size: 11px; color: #999; }
+
+    /* ===== MAP ===== */
+    .map-container {
+      margin: 0 16px 16px;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 6px 25px rgba(0,0,0,0.15);
+      border: 3px solid white;
+      position: relative;
+    }
+    #map {
+      width: 100%;
+      height: 380px;
+    }
+    .map-overlay-btn {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      z-index: 999;
+      background: var(--orange);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 48px; height: 48px;
+      font-size: 22px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(255,140,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .map-label {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 999;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      backdrop-filter: blur(4px);
+    }
+
+    /* ===== ACTIVITY LOG ===== */
+    .section-title {
+      padding: 0 20px 12px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--brown);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .activity-list { padding: 0 16px 100px; display: flex; flex-direction: column; gap: 10px; }
+    .activity-item {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+    .activity-dot {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--orange-light), var(--orange));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .activity-info { flex: 1; }
+    .activity-title { font-weight: 600; color: #333; font-size: 14px; }
+    .activity-subtitle { color: #999; font-size: 12px; margin-top: 2px; }
+    .activity-time { color: #bbb; font-size: 11px; white-space: nowrap; }
+
+    /* ===== BOTTOM NAV ===== */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: white;
+      display: flex;
+      border-top: 1px solid #f0f0f0;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+      z-index: 1000;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 8px 10px;
+      cursor: pointer;
+      color: #bbb;
+      font-size: 11px;
+      gap: 4px;
+      transition: all 0.2s;
+      border: none;
+      background: none;
+    }
+    .nav-item.active { color: var(--orange); }
+    .nav-icon { font-size: 22px; }
+
+    /* ===== ADD DOG MODAL ===== */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 2000;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-sheet {
+      background: white;
+      border-radius: 28px 28px 0 0;
+      padding: 24px 24px 40px;
+      width: 100%;
+      max-width: 480px;
+      animation: slideUp 0.3s ease;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .modal-handle {
+      width: 40px; height: 4px;
+      background: #ddd;
+      border-radius: 2px;
+      margin: 0 auto 20px;
+    }
+    .modal-title { font-size: 18px; font-weight: 700; color: var(--brown); margin-bottom: 20px; }
+    .form-group { margin-bottom: 16px; }
+    .form-label { font-size: 13px; color: #666; margin-bottom: 6px; display: block; font-weight: 600; }
+    .form-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #eee;
+      border-radius: 12px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+    .form-input:focus { border-color: var(--orange); }
+    .emoji-picker {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .emoji-option {
+      font-size: 28px;
+      padding: 8px;
+      border-radius: 12px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .emoji-option.selected {
+      border-color: var(--orange);
+      background: rgba(255,140,0,0.1);
+    }
+    .btn-primary {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+      color: white;
+      border: none;
+      border-radius: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+      font-family: inherit;
+    }
+
+    /* ===== TOAST ===== */
+    .toast {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-size: 13px;
+      z-index: 3000;
+      opacity: 0;
+      transition: all 0.3s;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Dog marker custom */
+    .dog-marker {
+      background: var(--orange);
+      border: 3px solid white;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+    }
+    .dog-marker-inner {
+      transform: rotate(45deg);
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <span class="paw-icon">🐾</span>
+      <div>
+        <h1>Dog Tracker</h1>
+        <div class="header-subtitle">ติดตามน้องหมาแบบ real-time</div>
+      </div>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot" id="conn-dot"></div>
+      <span id="conn-text">เชื่อมต่อ</span>
+    </div>
+  </div>
+
+  <!-- DOG CARDS -->
+  <div class="dogs-scroll" id="dogs-scroll">
+    <!-- injected by JS -->
+    <div class="add-dog-card" onclick="openAddDog()">
+      <span style="font-size:28px">➕</span>
+      <span>เพิ่มน้องหมา</span>
+    </div>
+  </div>
+
+  <!-- INFO STRIP -->
+  <div class="info-strip">
+    <div class="info-card">
+      <span class="info-card-icon">📍</span>
+      <span class="info-card-value" id="info-lat">—</span>
+      <span class="info-card-label">Latitude</span>
+    </div>
+    <div class="info-card">
+      <span class="info-card-icon">📍</span>
+      <span class="info-card-value" id="info-lng">—</span>
+      <span class="info-card-label">Longitude</span>
+    </div>
+    <div class="info-card">
+      <span class="info-card-icon">🕐</span>
+      <span class="info-card-value" id="info-time">—</span>
+      <span class="info-card-label">อัปเดตล่าสุด</span>
+    </div>
+    <div class="info-card">
+      <span class="info-card-icon">🛰️</span>
+      <span class="info-card-value" id="info-acc">—</span>
+      <span class="info-card-label">ความแม่นยำ (m)</span>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div class="map-container">
+    <div class="map-label" id="map-label">🐕 เลือกน้องหมาเพื่อดูตำแหน่ง</div>
+    <div id="map"></div>
+    <button class="map-overlay-btn" onclick="centerMap()" title="Center">🎯</button>
+  </div>
+
+  <!-- ACTIVITY -->
+  <div class="section-title">📋 ประวัติตำแหน่ง</div>
+  <div class="activity-list" id="activity-list">
+    <div class="activity-item">
+      <div class="activity-dot">🐾</div>
+      <div class="activity-info">
+        <div class="activity-title">รอรับข้อมูล GPS...</div>
+        <div class="activity-subtitle">เพิ่มน้องหมาและเชื่อม Tracker</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <button class="nav-item active">
+      <span class="nav-icon">🗺️</span>แผนที่
+    </button>
+    <button class="nav-item">
+      <span class="nav-icon">📋</span>ประวัติ
+    </button>
+    <button class="nav-item" onclick="openAddDog()">
+      <span class="nav-icon">➕</span>เพิ่มหมา
+    </button>
+    <button class="nav-item">
+      <span class="nav-icon">⚙️</span>ตั้งค่า
+    </button>
+  </nav>
+
+  <!-- ADD DOG MODAL -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">🐕 เพิ่มน้องหมา</div>
+      <div class="form-group">
+        <label class="form-label">ชื่อน้องหมา</label>
+        <input class="form-input" id="dog-name-input" placeholder="เช่น บิสกิต, โกลด์เด้น"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">สายพันธุ์</label>
+        <input class="form-input" id="dog-breed-input" placeholder="เช่น Golden Retriever"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">รหัส GPS Tracker (Device ID)</label>
+        <input class="form-input" id="dog-tracker-id" placeholder="เช่น DOG001"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">เลือก Emoji</label>
+        <div class="emoji-picker" id="emoji-picker">
+          <span class="emoji-option selected" onclick="selectEmoji(this,'🐕')">🐕</span>
+          <span class="emoji-option" onclick="selectEmoji(this,'🦮')">🦮</span>
+          <span class="emoji-option" onclick="selectEmoji(this,'🐩')">🐩</span>
+          <span class="emoji-option" onclick="selectEmoji(this,'🐕‍🦺')">🐕‍🦺</span>
+          <span class="emoji-option" onclick="selectEmoji(this,'🐶')">🐶</span>
+          <span class="emoji-option" onclick="selectEmoji(this,'🦴')">🦴</span>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="saveDog()">บันทึกน้องหมา 🐾</button>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ==========================================
+    // CONFIG — แก้ตรงนี้
+    // ==========================================
+    const APPS_SCRIPT_URL = 'YOUR_APPS_SCRIPT_URL_HERE';
+    const FETCH_INTERVAL  = 10000; // โหลดแผนที่ทุก 10 วินาที
+    // ==========================================
+
+    var map, markers = {}, polylines = {}, allLocations = {};
+    var dogs = JSON.parse(localStorage.getItem('dogs') || '[]');
+    var selectedDog = null;
+    var selectedEmoji = '🐕';
+    var lastPositions = {};
+
+    // ===== INIT =====
+    window.onload = function() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      }
+      initMap();
+      renderDogCards();
+      startFetching();
+    };
+
+    function initMap() {
+      map = L.map('map').setView([13.7563, 100.5018], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+    }
+
+    // ===== FETCH DATA =====
+    function startFetching() {
+      fetchData();
+      setInterval(fetchData, FETCH_INTERVAL);
+    }
+
+    function fetchData() {
+      if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === 'YOUR_APPS_SCRIPT_URL_HERE') {
+        loadDemoData();
+        return;
+      }
+      fetch(APPS_SCRIPT_URL + '?action=get', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+          processLocations(data);
+          setOnline(true);
+        })
+        .catch(() => setOnline(false));
+    }
+
+    // DEMO DATA (ทดสอบก่อนมี GPS จริง)
+    function loadDemoData() {
+      const base = { lat: 13.7563, lng: 100.5018 };
+      const now = Date.now();
+      const demo = [];
+      dogs.forEach((dog, di) => {
+        for (let i = 0; i < 8; i++) {
+          demo.push({
+            name: dog.trackerId || dog.name,
+            lat:  base.lat + (di * 0.002) + (Math.sin(now/10000 + i) * 0.001),
+            lng:  base.lng + (di * 0.002) + (Math.cos(now/10000 + i) * 0.001),
+            ts:   new Date(now - i * 600000).toISOString()
+          });
+        }
+      });
+      processLocations(demo);
+      setOnline(true);
+    }
+
+    function processLocations(data) {
+      allLocations = {};
+      data.filter(r => r.name && r.lat && r.lng).forEach(r => {
+        if (!allLocations[r.name]) allLocations[r.name] = [];
+        allLocations[r.name].push(r);
+      });
+      updateMap();
+      updateInfoCards();
+      updateActivity();
+    }
+
+    // ===== MAP =====
+    function updateMap() {
+      // Clear old
+      Object.values(markers).forEach(m => map.removeLayer(m));
+      Object.values(polylines).forEach(p => map.removeLayer(p));
+      markers = {}; polylines = {};
+
+      dogs.forEach(dog => {
+        const id = dog.trackerId || dog.name;
+        const locs = allLocations[id];
+        if (!locs || locs.length === 0) return;
+
+        const coords = locs.map(l => [parseFloat(l.lat), parseFloat(l.lng)]);
+
+        // Path line
+        const poly = L.polyline(coords, {
+          color: '#FF8C00', weight: 3, dashArray: '8,6', opacity: 0.7
+        }).addTo(map);
+        polylines[id] = poly;
+
+        // History dots
+        coords.slice(0, -1).forEach(c => {
+          L.circleMarker(c, {
+            radius: 4, fillColor: '#FFB347', color: '#FF8C00',
+            weight: 1, fillOpacity: 0.6
+          }).addTo(map);
+        });
+
+        // Dog marker (latest position)
+        const latest = coords[coords.length - 1];
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="
+            background:#FF8C00;border:3px solid white;
+            border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+            width:40px;height:40px;
+            box-shadow:0 3px 10px rgba(0,0,0,0.3);
+            display:flex;align-items:center;justify-content:center;">
+            <span style="transform:rotate(45deg);font-size:20px">${dog.emoji||'🐕'}</span>
+          </div>`,
+          iconSize: [40, 40],
+          iconAnchor: [20, 40]
+        });
+        const mk = L.marker(latest, { icon })
+          .addTo(map)
+          .bindPopup(`<b>${dog.name}</b><br>📍 ${latest[0].toFixed(5)}, ${latest[1].toFixed(5)}`);
+        markers[id] = mk;
+
+        lastPositions[id] = { lat: latest[0], lng: latest[1] };
+      });
+
+      if (selectedDog) {
+        const id = selectedDog.trackerId || selectedDog.name;
+        const locs = allLocations[id];
+        if (locs && locs.length > 0) {
+          const last = locs[locs.length - 1];
+          updateInfoCards(last);
+          document.getElementById('map-label').textContent = `${selectedDog.emoji||'🐕'} ${selectedDog.name}`;
+        }
+      }
+    }
+
+    function centerMap() {
+      if (selectedDog) {
+        const id = selectedDog.trackerId || selectedDog.name;
+        if (lastPositions[id]) {
+          map.setView([lastPositions[id].lat, lastPositions[id].lng], 16);
+          return;
+        }
+      }
+      const all = Object.values(lastPositions);
+      if (all.length > 0) {
+        map.setView([all[0].lat, all[0].lng], 15);
+      }
+    }
+
+    // ===== INFO CARDS =====
+    function updateInfoCards(loc) {
+      if (!loc) {
+        if (selectedDog) {
+          const id = selectedDog.trackerId || selectedDog.name;
+          const locs = allLocations[id];
+          if (locs && locs.length > 0) loc = locs[locs.length - 1];
+        }
+      }
+      if (!loc) return;
+      document.getElementById('info-lat').textContent = parseFloat(loc.lat).toFixed(4);
+      document.getElementById('info-lng').textContent = parseFloat(loc.lng).toFixed(4);
+      const d = new Date(loc.ts || Date.now());
+      document.getElementById('info-time').textContent =
+        d.getHours().toString().padStart(2,'0') + ':' +
+        d.getMinutes().toString().padStart(2,'0');
+      document.getElementById('info-acc').textContent = loc.accuracy ? Math.round(loc.accuracy) : '—';
+    }
+
+    // ===== ACTIVITY =====
+    function updateActivity() {
+      const list = document.getElementById('activity-list');
+      const items = [];
+      dogs.forEach(dog => {
+        const id = dog.trackerId || dog.name;
+        const locs = allLocations[id] || [];
+        locs.slice().reverse().slice(0, 5).forEach(l => {
+          items.push({ dog, loc: l });
+        });
+      });
+      if (items.length === 0) return;
+      list.innerHTML = items.map(({ dog, loc }) => {
+        const d = new Date(loc.ts || Date.now());
+        const t = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+        return `
+          <div class="activity-item" onclick="focusDog('${dog.name}')">
+            <div class="activity-dot">${dog.emoji||'🐕'}</div>
+            <div class="activity-info">
+              <div class="activity-title">${dog.name}</div>
+              <div class="activity-subtitle">📍 ${parseFloat(loc.lat).toFixed(4)}, ${parseFloat(loc.lng).toFixed(4)}</div>
+            </div>
+            <div class="activity-time">${t}</div>
+          </div>`;
+      }).join('');
+    }
+
+    // ===== DOG CARDS =====
+    function renderDogCards() {
+      const scroll = document.getElementById('dogs-scroll');
+      const addBtn = scroll.querySelector('.add-dog-card');
+      // Remove old cards
+      scroll.querySelectorAll('.dog-card').forEach(e => e.remove());
+
+      dogs.forEach(dog => {
+        const card = document.createElement('div');
+        card.className = 'dog-card' + (selectedDog && selectedDog.name === dog.name ? ' active' : '');
+        card.innerHTML = `
+          <div class="dog-status-badge"></div>
+          <span class="dog-avatar">${dog.emoji||'🐕'}</span>
+          <div class="dog-name">${dog.name}</div>
+          <div class="dog-breed">${dog.breed||''}</div>
+          <div class="dog-last-update">ID: ${dog.trackerId||'—'}</div>
+        `;
+        card.onclick = () => selectDog(dog);
+        scroll.insertBefore(card, addBtn);
+      });
+    }
+
+    function selectDog(dog) {
+      selectedDog = dog;
+      renderDogCards();
+      const id = dog.trackerId || dog.name;
+      document.getElementById('map-label').textContent = `${dog.emoji||'🐕'} ${dog.name}`;
+      if (lastPositions[id]) {
+        map.setView([lastPositions[id].lat, lastPositions[id].lng], 16);
+        if (markers[id]) markers[id].openPopup();
+      }
+      updateInfoCards();
+    }
+
+    function focusDog(name) {
+      const dog = dogs.find(d => d.name === name);
+      if (dog) selectDog(dog);
+    }
+
+    // ===== ADD DOG =====
+    function openAddDog() {
+      document.getElementById('modal').classList.add('open');
+    }
+    function closeModal() {
+      document.getElementById('modal').classList.remove('open');
+    }
+    document.getElementById('modal').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+
+    function selectEmoji(el, emoji) {
+      document.querySelectorAll('.emoji-option').forEach(e => e.classList.remove('selected'));
+      el.classList.add('selected');
+      selectedEmoji = emoji;
+    }
+
+    function saveDog() {
+      const name     = document.getElementById('dog-name-input').value.trim();
+      const breed    = document.getElementById('dog-breed-input').value.trim();
+      const trackerId = document.getElementById('dog-tracker-id').value.trim();
+      if (!name) { showToast('⚠️ กรุณากรอกชื่อน้องหมา'); return; }
+      if (!trackerId) { showToast('⚠️ กรุณากรอก Device ID ของ Tracker'); return; }
+      dogs.push({ name, breed, trackerId, emoji: selectedEmoji });
+      localStorage.setItem('dogs', JSON.stringify(dogs));
+      closeModal();
+      renderDogCards();
+      showToast(`✅ เพิ่ม ${name} แล้ว!`);
+      document.getElementById('dog-name-input').value = '';
+      document.getElementById('dog-breed-input').value = '';
+      document.getElementById('dog-tracker-id').value = '';
+      fetchData();
+    }
+
+    // ===== HELPERS =====
+    function setOnline(online) {
+      document.getElementById('conn-dot').style.background = online ? '#4CAF50' : '#F44336';
+      document.getElementById('conn-text').textContent = online ? 'เชื่อมต่อ' : 'ออฟไลน์';
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
+  </script>
+</body>
+</html>
